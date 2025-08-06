@@ -53,7 +53,13 @@ export default function FileManagementPanel({ documents, inProgressFiles = [], o
     }
   };
   return (
-    <aside className="w-[300px] bg-sidebar-bg p-3 flex flex-col h-screen border-l border-border-color">
+    <aside className="w-[300px] bg-sidebar-bg p-3 flex flex-col h-screen border-l border-border-color rounded-l-2xl shadow-2xl">
+        {documents.length === 0 && isNewChatMode && (
+            <div className="p-4 mb-4 text-center bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-lg">
+                <p className="font-bold">Welcome!</p>
+                <p className="text-sm">To start a new chat, please upload a document first.</p>
+            </div>
+        )}
       <div onClick={onFileUpload} className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-card border-dashed-border bg-background text-center hover:border-primary-accent transition-colors duration-200 cursor-pointer mb-4">
         <UploadCloud size={32} className="text-secondary-text mb-2" />
         <p className="text-primary-text font-semibold">Upload Documents</p>

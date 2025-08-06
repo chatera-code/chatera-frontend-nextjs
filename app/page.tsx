@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { FileUp } from 'lucide-react';
 import ChatSessionsPanel from './components/ChatSessionsPanel';
 import FileManagementPanel from './components/FileManagementPanel';
 import ChatArea from './components/ChatArea';
@@ -20,12 +21,42 @@ export default function Home() {
   const [refreshDocuments, setRefreshDocuments] = useState(false);
   
   const [uploadChannelId, setUploadChannelId] = useState<string | null>(null);
-  const { inProgressFiles, isConnected: isUploadSocketConnected, setUploadCompleteCallback } = useUploadSocket(uploadChannelId);
+  const { inProgressFiles, setUploadCompleteCallback } = useUploadSocket(uploadChannelId);
   
-  // FIX: The chat socket is now managed *only* here in the parent component.
   const { statusUpdate, setOnTitleUpdate } = useChatSocket(selectedSessionId);
 
+  const [isChatPanelPermanentlyOpen, setIsChatPanelPermanentlyOpen] = useState(false);
+  const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
+  const filePanelRef = useRef<HTMLDivElement>(null);
+  const fileButtonRef = useRef<HTMLButtonElement>(null);
+
   const clientId = "user_12345";
+
+  // Automatically create a new chat when the app loads for the first time
+  useEffect(() => {
+    if (sessions.length === 0) {
+      handleNewChat();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  
+  // Effect to handle clicks outside of the file panel and its button
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        isFilePanelOpen &&
+        filePanelRef.current && !filePanelRef.current.contains(event.target as Node) &&
+        fileButtonRef.current && !fileButtonRef.current.contains(event.target as Node)
+      ) {
+        setIsFilePanelOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isFilePanelOpen]);
+
 
   const triggerDocumentRefresh = useCallback(() => {
     setRefreshDocuments(prev => !prev);
@@ -63,14 +94,13 @@ export default function Home() {
   const handleNewChat = async () => {
     try {
       const userDocs = await fetchUserDocuments(clientId);
-      if (userDocs.length === 0) {
-        setIsModalOpen(true);
-      } else {
-        const newSession = await createNewSession(clientId);
-        setSessions(prev => [newSession, ...prev]);
-        setSelectedSessionId(newSession.id);
-        setSelectedDocs(new Set());
+      if (userDocs.length === 0 && documents.length === 0) {
+        setIsFilePanelOpen(true);
       }
+      const newSession = await createNewSession(clientId);
+      setSessions(prev => [newSession, ...prev]);
+      setSelectedSessionId(newSession.id);
+      setSelectedDocs(new Set());
     } catch (error) {
       console.error("Error starting new chat:", error);
     }
@@ -96,7 +126,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex h-screen font-sans bg-background">
+    <div className="flex h-screen font-sans bg-background overflow-hidden">
       <ChatSessionsPanel
         sessions={sessions}
         setSessions={setSessions}
@@ -104,29 +134,47 @@ export default function Home() {
         onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
         clientId={clientId}
+        isPermanentlyOpen={isChatPanelPermanentlyOpen}
+        togglePermanentOpen={() => setIsChatPanelPermanentlyOpen(!isChatPanelPermanentlyOpen)}
       />
       
-      <div className="flex-1 flex flex-col h-screen">
-        <ChatArea 
-            key={selectedSessionId}
-            selectedSessionId={selectedSessionId} 
-            selectedDocs={selectedDocs}
-            clientId={clientId}
-            statusUpdate={statusUpdate} // Pass the status update down as a prop
-        />
+      <div className="flex-1 flex overflow-hidden">
+        <main className={`flex-1 flex flex-col h-full relative transition-all duration-300 ease-in-out ${isChatPanelPermanentlyOpen ? 'ml-0' : 'ml-0'}`}>
+            <div className="absolute top-4 right-8 z-30">
+                <button 
+                    ref={fileButtonRef}
+                    onClick={() => setIsFilePanelOpen(!isFilePanelOpen)} 
+                    className="p-3 rounded-full bg-white shadow-md hover:bg-gray-100 transition-colors"
+                >
+                    <FileUp size={20} className="text-primary-text" />
+                </button>
+            </div>
+            <ChatArea 
+                key={selectedSessionId}
+                selectedSessionId={selectedSessionId} 
+                selectedDocs={selectedDocs}
+                clientId={clientId}
+                statusUpdate={statusUpdate}
+            />
+        </main>
+
+        <div 
+            ref={filePanelRef}
+            className={`transition-all duration-300 ease-in-out flex-shrink-0 overflow-hidden ${isFilePanelOpen ? 'w-[320px] p-3' : 'w-0'}`}
+        >
+            {isFilePanelOpen && <FileManagementPanel 
+                documents={documents}
+                inProgressFiles={inProgressFiles}
+                onFileUpload={() => setIsModalOpen(true)}
+                selectedDocs={selectedDocs}
+                setSelectedDocs={setSelectedDocs}
+                isNewChatMode={!selectedSessionId || sessions.find(s => s.id === selectedSessionId)?.title === 'New Chat'}
+                clientId={clientId}
+                onDeleteSuccess={triggerDocumentRefresh}
+            />}
+        </div>
       </div>
       
-      <FileManagementPanel 
-        documents={documents}
-        inProgressFiles={inProgressFiles}
-        onFileUpload={() => setIsModalOpen(true)}
-        selectedDocs={selectedDocs}
-        setSelectedDocs={setSelectedDocs}
-        isNewChatMode={sessions.find(s => s.id === selectedSessionId)?.title === 'New Chat'}
-        clientId={clientId}
-        onDeleteSuccess={triggerDocumentRefresh}
-      />
-
       <FileUploadModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
