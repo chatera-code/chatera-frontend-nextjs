@@ -1,103 +1,137 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import ChatSessionsPanel from './components/ChatSessionsPanel';
+import FileManagementPanel from './components/FileManagementPanel';
+import ChatArea from './components/ChatArea';
+import FileUploadModal from './components/FileUploadModal';
+import { useUploadSocket } from './hooks/useUploadSocket';
+import { useChatSocket } from './hooks/useChatSocket';
+import { fetchUserDocuments, createNewSession, uploadDocuments } from './lib/api';
+import { Document, Session } from './types';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  const [refreshDocuments, setRefreshDocuments] = useState(false);
+  
+  const [uploadChannelId, setUploadChannelId] = useState<string | null>(null);
+  const { inProgressFiles, isConnected: isUploadSocketConnected, setUploadCompleteCallback } = useUploadSocket(uploadChannelId);
+  
+  // FIX: The chat socket is now managed *only* here in the parent component.
+  const { statusUpdate, setOnTitleUpdate } = useChatSocket(selectedSessionId);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+  const clientId = "user_12345";
+
+  const triggerDocumentRefresh = useCallback(() => {
+    setRefreshDocuments(prev => !prev);
+  }, []);
+
+  useEffect(() => {
+    if (selectedSessionId) {
+      setOnTitleUpdate((newTitle: string) => {
+        setSessions(prevSessions =>
+          prevSessions.map(session =>
+            session.id === selectedSessionId ? { ...session, title: newTitle } : session
+          )
+        );
+      });
+    }
+  }, [selectedSessionId, setOnTitleUpdate]);
+
+  useEffect(() => {
+    const loadDocs = async () => {
+      try {
+        const userDocs = await fetchUserDocuments(clientId);
+        setDocuments(userDocs);
+      } catch (error) { console.error("Failed to load documents:", error); }
+    };
+    loadDocs();
+  }, [clientId, refreshDocuments]);
+
+  useEffect(() => {
+    setUploadCompleteCallback(() => {
+        console.log('An upload completed, refreshing document list.');
+        triggerDocumentRefresh();
+    });
+  }, [setUploadCompleteCallback, triggerDocumentRefresh]);
+
+  const handleNewChat = async () => {
+    try {
+      const userDocs = await fetchUserDocuments(clientId);
+      if (userDocs.length === 0) {
+        setIsModalOpen(true);
+      } else {
+        const newSession = await createNewSession(clientId);
+        setSessions(prev => [newSession, ...prev]);
+        setSelectedSessionId(newSession.id);
+        setSelectedDocs(new Set());
+      }
+    } catch (error) {
+      console.error("Error starting new chat:", error);
+    }
+  };
+
+  const handleFileUpload = async (files: File[]) => {
+    setIsModalOpen(false);
+    const channelId = uuidv4();
+    setUploadChannelId(channelId);
+    
+    setTimeout(async () => {
+        try {
+            await uploadDocuments(clientId, files, channelId);
+        } catch (error) {
+            console.error("Upload failed:", error);
+        }
+    }, 500);
+  };
+  
+  const handleSelectSession = useCallback((id: string) => {
+    setSelectedSessionId(id);
+    setSelectedDocs(new Set());
+  }, []);
+
+  return (
+    <div className="flex h-screen font-sans bg-background">
+      <ChatSessionsPanel
+        sessions={sessions}
+        setSessions={setSessions}
+        selectedSessionId={selectedSessionId}
+        onSelectSession={handleSelectSession}
+        onNewChat={handleNewChat}
+        clientId={clientId}
+      />
+      
+      <div className="flex-1 flex flex-col h-screen">
+        <ChatArea 
+            key={selectedSessionId}
+            selectedSessionId={selectedSessionId} 
+            selectedDocs={selectedDocs}
+            clientId={clientId}
+            statusUpdate={statusUpdate} // Pass the status update down as a prop
+        />
+      </div>
+      
+      <FileManagementPanel 
+        documents={documents}
+        inProgressFiles={inProgressFiles}
+        onFileUpload={() => setIsModalOpen(true)}
+        selectedDocs={selectedDocs}
+        setSelectedDocs={setSelectedDocs}
+        isNewChatMode={sessions.find(s => s.id === selectedSessionId)?.title === 'New Chat'}
+        clientId={clientId}
+        onDeleteSuccess={triggerDocumentRefresh}
+      />
+
+      <FileUploadModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onFileSelect={handleFileUpload}
+      />
     </div>
   );
 }
