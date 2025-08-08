@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Plus, MoreHorizontal, Pin, Trash2, Pencil, Menu, SquarePen } from 'lucide-react';
 import { Session } from '../types';
-import { fetchChatSessions, updateSession, deleteSession } from '../lib/api';
+import { updateSession, deleteSession } from '../lib/api';
 
 const AnimatedTitle = ({ title }: { title: string }) => {
   const [displayedTitle, setDisplayedTitle] = useState(title);
@@ -28,19 +28,6 @@ export default function ChatSessionsPanel({ sessions, setSessions, selectedSessi
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const isExpanded = isPermanentlyOpen || isHovered;
-
-  useEffect(() => {
-    const loadSessions = async () => {
-      try {
-        const fetchedSessions = await fetchChatSessions(clientId);
-        if (typeof setSessions === 'function') setSessions(fetchedSessions);
-        if (fetchedSessions.length > 0 && !selectedSessionId) {
-          onSelectSession(fetchedSessions[0].id);
-        }
-      } catch (error) { console.error("Failed to load sessions:", error); }
-    };
-    loadSessions();
-  }, [clientId, setSessions, onSelectSession, selectedSessionId]);
 
   // Effect to handle clicks outside of the dropdown menu
   useEffect(() => {

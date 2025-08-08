@@ -1,11 +1,13 @@
 import { Document, Session } from '../types';
 
-const API_BASE_URL = 'http://127.0.0.1:8000'; 
+// Define base URLs for each service the front-end will call directly
+const MAIN_API_BASE_URL = 'http://127.0.0.1:8000'; // For chat, sessions, docs
+const INGESTION_API_BASE_URL = 'http://127.0.0.1:8002'; // For file uploads
 
 // --- API Fetching Functions ---
 
 /**
- * UPDATED: Uploads multiple documents to the backend.
+ * UPDATED: Uploads multiple documents to the dedicated ingestion service.
  */
 export const uploadDocuments = async (clientId: string, files: File[], uploadChannelId: string): Promise<void> => {
   const formData = new FormData();
@@ -13,7 +15,8 @@ export const uploadDocuments = async (clientId: string, files: File[], uploadCha
     formData.append('files', file);
   });
   
-  const response = await fetch(`${API_BASE_URL}/upload/?client_id=${clientId}&uploadChannelId=${uploadChannelId}`, {
+  // Note the use of INGESTION_API_BASE_URL
+  const response = await fetch(`${INGESTION_API_BASE_URL}/upload/?client_id=${clientId}&uploadChannelId=${uploadChannelId}`, {
     method: 'POST',
     body: formData,
   });
@@ -25,10 +28,10 @@ export const uploadDocuments = async (clientId: string, files: File[], uploadCha
 };
 
 /**
- * UPDATED: Deletes multiple documents from the backend.
+ * UPDATED: Deletes multiple documents by calling the main app.
  */
 export const deleteDocuments = async (docIds: string[], clientId: string): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/api/documents/delete`, {
+  const response = await fetch(`${MAIN_API_BASE_URL}/api/documents/delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ doc_ids: docIds, clientId: clientId }),
@@ -40,18 +43,15 @@ export const deleteDocuments = async (docIds: string[], clientId: string): Promi
   }
 };
 
-
-// --- Other API functions remain the same ---
-
 export const fetchUserDocuments = async (clientId: string): Promise<Document[]> => {
-  const response = await fetch(`${API_BASE_URL}/api/documents?clientId=${clientId}`);
+  const response = await fetch(`${MAIN_API_BASE_URL}/api/documents?clientId=${clientId}`);
   if (!response.ok) throw new Error('Failed to fetch documents');
   const data = await response.json();
   return data.documents || [];
 };
 
 export const updateSession = async (sessionId: string, updates: { title?: string; isPinned?: boolean }): Promise<Session> => {
-  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`, {
+  const response = await fetch(`${MAIN_API_BASE_URL}/api/sessions/${sessionId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
@@ -64,7 +64,7 @@ export const updateSession = async (sessionId: string, updates: { title?: string
 };
 
 export const deleteSession = async (sessionId: string): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}`, {
+  const response = await fetch(`${MAIN_API_BASE_URL}/api/sessions/${sessionId}`, {
     method: 'DELETE',
   });
   if (!response.ok) {
@@ -75,24 +75,24 @@ export const deleteSession = async (sessionId: string): Promise<void> => {
 
 
 export const fetchChatSessions = async (clientId: string): Promise<Session[]> => {
-  const response = await fetch(`${API_BASE_URL}/api/sessions?clientId=${clientId}`);
+  const response = await fetch(`${MAIN_API_BASE_URL}/api/sessions?clientId=${clientId}`);
   if (!response.ok) throw new Error('Failed to fetch sessions');
   const data = await response.json();
   return data.sessions || [];
 };
 
 export const fetchChatHistory = async (sessionId: string) => {
-  const response = await fetch(`${API_BASE_URL}/api/chats?sessionId=${sessionId}`);
+  const response = await fetch(`${MAIN_API_BASE_URL}/api/chats?sessionId=${sessionId}`);
   if (!response.ok) throw new Error('Failed to fetch chat history');
   const data = await response.json();
   return data.messages || [];
 };
 
-export const createNewSession = async (clientId: string): Promise<Session> => {
-  const response = await fetch(`${API_BASE_URL}/api/sessions/create`, {
+export const createNewSession = async (clientId: string, initialData?: { title: string }): Promise<Session> => {
+  const response = await fetch(`${MAIN_API_BASE_URL}/api/sessions/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ clientId }),
+    body: JSON.stringify({ clientId, ...initialData }),
   });
   if (!response.ok) throw new Error('Failed to create new session');
   const data = await response.json();
@@ -111,7 +111,7 @@ export const sendMessage = async (
   onError: (error: Error) => void
 ) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/query`, {
+    const response = await fetch(`${MAIN_API_BASE_URL}/api/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
@@ -132,15 +132,12 @@ export const sendMessage = async (
         break;
       }
       
-      // Add the new chunk to the buffer
       buffer += decoder.decode(value, { stream: true });
       
-      // Process all complete lines in the buffer
       const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep the last, possibly incomplete, line in the buffer
+      buffer = lines.pop() || '';
 
       for (const line of lines) {
-        // FIX: Check for the "data: " prefix and remove it before parsing
         if (line.startsWith('data: ')) {
           const jsonStr = line.substring(6).trim();
           if (jsonStr) {

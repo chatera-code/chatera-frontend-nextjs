@@ -9,27 +9,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        'background': '#FFFFFF', // Pure white main background
-        'sidebar-bg': '#F7F7F7', // Light grey for sidebars and user message
-        'user-message-bg': '#F7F7F7', // Grey for user's message bubble
-        'primary-accent': '#6B7280', // Medium gray for primary actions/hovers
-        'secondary-accent': '#E5E7EB', // Lighter gray for active items (replaces light blue)
-        'hover-accent': '#E5E7EB', // Darker shade of gray for hover
-        'primary-text': '#1F2937', // Dark gray for main text
-        'secondary-text': '#6B7280', // Medium gray for secondary text
-        'muted-text': '#9CA3AF', // Light gray for muted text
-        'border-color': '#E5E7EB',
+        'background': '#FFFFFF', // GitHub's main background
+        'sidebar-bg': '#F6F8FA', // GitHub's light grey for sidebars
+        'user-message-bg': '#F6F8FA', // Matching grey for user messages
+        'primary-accent': '#24292E', // Dark grey for primary actions
+        'secondary-accent': '#D1D5DA', // Lighter gray for borders and dividers
+        'hover-accent': '#F3F4F6', // A slightly off-white for hover states
+        'primary-text': '#24292E', // Main text color
+        'secondary-text': '#586069', // Secondary text color
+        'muted-text': '#6A737D', // Muted text for less important info
+        'border-color': '#E1E4E8', // Standard border color
+        'input-bg': '#FAFBFC', // Input background color
       },
       borderRadius: {
-        'card': '12px',
-        'button': '8px',
-        'chat-input': '20px',
-        'message-bubble': '18px',
+        'card': '6px', // GitHub uses slightly less rounded corners
+        'button': '6px',
+        'chat-input': '6px',
+        'message-bubble': '12px',
       },
       boxShadow: {
-        'sidebar': '0 1px 2px rgba(0, 0, 0, 0.03)',
+        'sidebar': '0 1px 0 rgba(27, 31, 35, 0.04)',
         'message': '0 1px 2px rgba(0, 0, 0, 0.05)',
-        'input-focus': '0 0 0 3px rgba(107, 114, 128, 0.2)',
+        'input-focus': '0 0 0 3px rgba(3, 102, 214, 0.3)',
       },
     },
   },

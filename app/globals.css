@@ -9,24 +9,39 @@
     overflow-y: hidden;
   }
 
-  /* Basic styling for rendered Markdown elements inside the .prose class */
-  .prose h1, .prose h2, .prose h3 {
-    @apply font-bold mb-2 mt-4;
+  /* --- Enhanced Markdown Styling --- */
+  .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+    @apply font-bold mb-3 mt-5 text-gray-800;
   }
+  .prose h1 { @apply text-2xl border-b pb-2; }
+  .prose h2 { @apply text-xl border-b pb-2; }
+  .prose h3 { @apply text-lg; }
+
   .prose p {
-    @apply mb-4;
+    @apply mb-4 leading-relaxed;
   }
   .prose ul {
-    @apply list-disc list-inside mb-4;
+    @apply list-disc list-inside mb-4 pl-4;
   }
   .prose ol {
-    @apply list-decimal list-inside mb-4;
+    @apply list-decimal list-inside mb-4 pl-4;
   }
   .prose a {
-    @apply text-primary-accent hover:underline;
+    @apply text-blue-600 hover:underline font-medium;
+  }
+  .prose strong {
+    @apply font-bold text-gray-800;
   }
   .prose blockquote {
-    @apply border-l-4 border-border-color pl-4 italic text-secondary-text;
+    @apply border-l-4 border-gray-300 pl-4 italic text-gray-600 my-4;
+  }
+  /* Style for inline code snippets within paragraphs */
+  .prose > p > code {
+    @apply bg-gray-200 text-pink-600 font-mono text-sm px-1.5 py-1 rounded-md;
+  }
+  /* Reset styles for code inside a code block, so it inherits from the container */
+  .prose pre > code {
+    @apply bg-transparent text-inherit p-0 font-mono;
   }
 }
 

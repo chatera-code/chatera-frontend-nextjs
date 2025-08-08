@@ -2,11 +2,12 @@
 
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { ghcolors } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Clipboard, Check } from 'lucide-react';
 import { useState, ReactNode } from 'react';
 
-// FIX: Define the props for the custom code renderer explicitly
-// This avoids the need for a deep import that can break between versions.
+// Define the props for the custom code renderer explicitly
 interface CustomCodeProps {
   node?: any;
   inline?: boolean;
@@ -18,32 +19,37 @@ interface CustomCodeProps {
 const CustomCodeRenderer = ({ node, inline, className, children, ...props }: CustomCodeProps) => {
   const [hasCopied, setHasCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || '');
-  const language = match ? match[1] : 'text';
+  const codeString = String(children).replace(/\n$/, '');
 
   const handleCopy = () => {
-    const codeToCopy = Array.isArray(children) ? String(children[0]) : '';
-    navigator.clipboard.writeText(codeToCopy);
+    navigator.clipboard.writeText(codeString);
     setHasCopied(true);
     setTimeout(() => setHasCopied(false), 2000);
   };
 
-  return !inline && match ? (
-    <div className="my-4 rounded-md bg-gray-800 text-white relative font-sans">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-600">
-        <span className="text-xs text-gray-400">{language}</span>
-        <button onClick={handleCopy} className="text-xs flex items-center text-gray-400 hover:text-white">
+  // If a language is specified (e.g., ```python), it's a block.
+  // Otherwise, treat it as inline code.
+  return match ? (
+    <div className="my-4 rounded-md bg-sidebar-bg border border-border-color relative font-sans shadow-sm">
+       <div className="flex items-center justify-between px-4 py-2 border-b border-border-color">
+        <span className="text-xs text-secondary-text font-sans">{match[1]}</span>
+        <button onClick={handleCopy} className="text-xs flex items-center text-secondary-text hover:text-primary-text transition-colors">
           {hasCopied ? <Check size={14} /> : <Clipboard size={14} />}
-          <span className="ml-1">{hasCopied ? 'Copied!' : 'Copy'}</span>
+          <span className="ml-1.5">{hasCopied ? 'Copied!' : 'Copy code'}</span>
         </button>
       </div>
-      <pre className="p-4 overflow-x-auto whitespace-pre-wrap break-words">
-        <code className={`language-${language}`} {...props}>
-          {children}
-        </code>
-      </pre>
+      <SyntaxHighlighter
+        style={ghcolors}
+        language={match[1]}
+        PreTag="div"
+        customStyle={{ margin: 0, padding: '1rem', backgroundColor: '#F6F8FA' }}
+        {...props}
+      >
+        {codeString}
+      </SyntaxHighlighter>
     </div>
   ) : (
-    <code className="px-1 py-0.5 bg-input-bg rounded-sm text-primary-accent" {...props}>
+    <code className="px-1.5 py-1 bg-gray-100 text-gray-800 font-mono text-sm rounded-md" {...props}>
       {children}
     </code>
   );
@@ -69,6 +75,8 @@ export default function MarkdownRenderer({ content }: { content: string }) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={components}
+        // This prop fixes the hydration error by preventing <p> tags from wrapping block elements.
+        unwrapDisallowed={true} 
       >
         {content}
       </ReactMarkdown>

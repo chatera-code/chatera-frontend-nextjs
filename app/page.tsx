@@ -9,7 +9,7 @@ import ChatArea from './components/ChatArea';
 import FileUploadModal from './components/FileUploadModal';
 import { useUploadSocket } from './hooks/useUploadSocket';
 import { useChatSocket } from './hooks/useChatSocket';
-import { fetchUserDocuments, createNewSession, uploadDocuments } from './lib/api';
+import { fetchUserDocuments, createNewSession, uploadDocuments, fetchChatSessions } from './lib/api';
 import { Document, Session } from './types';
 
 export default function Home() {
@@ -19,7 +19,8 @@ export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [refreshDocuments, setRefreshDocuments] = useState(false);
-  
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
   const [uploadChannelId, setUploadChannelId] = useState<string | null>(null);
   const { inProgressFiles, setUploadCompleteCallback } = useUploadSocket(uploadChannelId);
   
@@ -32,14 +33,26 @@ export default function Home() {
 
   const clientId = "user_12345";
 
-  // Automatically create a new chat when the app loads for the first time
+  // Fetch sessions and select the first one on initial load only.
   useEffect(() => {
-    if (sessions.length === 0) {
-      handleNewChat();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  
+    const loadInitialData = async () => {
+      if (isInitialLoad) {
+        try {
+          const fetchedSessions = await fetchChatSessions(clientId);
+          setSessions(fetchedSessions);
+          if (fetchedSessions.length > 0) {
+            setSelectedSessionId(fetchedSessions[0].id);
+          }
+        } catch (error) {
+          console.error("Failed to load initial sessions:", error);
+        } finally {
+          setIsInitialLoad(false);
+        }
+      }
+    };
+    loadInitialData();
+  }, [clientId, isInitialLoad]);
+
   // Effect to handle clicks outside of the file panel and its button
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -91,21 +104,16 @@ export default function Home() {
     });
   }, [setUploadCompleteCallback, triggerDocumentRefresh]);
 
-  const handleNewChat = async () => {
-    try {
-      const userDocs = await fetchUserDocuments(clientId);
-      if (userDocs.length === 0 && documents.length === 0) {
-        setIsFilePanelOpen(true);
-      }
-      const newSession = await createNewSession(clientId);
-      setSessions(prev => [newSession, ...prev]);
-      setSelectedSessionId(newSession.id);
-      setSelectedDocs(new Set());
-    } catch (error) {
-      console.error("Error starting new chat:", error);
-    }
+  const handleNewChat = () => {
+    setSelectedSessionId(null);
+    setSelectedDocs(new Set());
   };
 
+  const handleSessionCreated = (newSession: Session) => {
+    setSessions(prev => [newSession, ...prev]);
+    setSelectedSessionId(newSession.id);
+  };
+  
   const handleFileUpload = async (files: File[]) => {
     setIsModalOpen(false);
     const channelId = uuidv4();
@@ -150,11 +158,11 @@ export default function Home() {
                 </button>
             </div>
             <ChatArea 
-                key={selectedSessionId}
                 selectedSessionId={selectedSessionId} 
                 selectedDocs={selectedDocs}
                 clientId={clientId}
                 statusUpdate={statusUpdate}
+                onSessionCreated={handleSessionCreated}
             />
         </main>
 
