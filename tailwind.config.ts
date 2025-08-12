@@ -8,6 +8,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['"Google Sans"', 'sans-serif'],
+        mono: ['"Roboto Mono"', 'monospace'],
+      },
       colors: {
         'background': '#FFFFFF', // GitHub's main background
         'sidebar-bg': '#F6F8FA', // GitHub's light grey for sidebars
@@ -30,7 +34,7 @@ const config: Config = {
       boxShadow: {
         'sidebar': '0 1px 0 rgba(27, 31, 35, 0.04)',
         'message': '0 1px 2px rgba(0, 0, 0, 0.05)',
-        'input-focus': '0 0 0 3px rgba(3, 102, 214, 0.3)',
+        // 'input-focus': '0 0 0 3px rgba(3, 102, 214, 0.3)',
       },
     },
   },

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { FileUp } from 'lucide-react';
+import { FileUp, PanelRightOpen, Code2 } from 'lucide-react';
 import ChatSessionsPanel from './components/ChatSessionsPanel';
 import FileManagementPanel from './components/FileManagementPanel';
 import ChatArea from './components/ChatArea';
@@ -10,7 +10,9 @@ import FileUploadModal from './components/FileUploadModal';
 import { useUploadSocket } from './hooks/useUploadSocket';
 import { useChatSocket } from './hooks/useChatSocket';
 import { fetchUserDocuments, createNewSession, uploadDocuments, fetchChatSessions } from './lib/api';
-import { Document, Session } from './types';
+import { Document, Session, CodeBlock } from './types';
+import GeneratedContentPanel from './components/GeneratedContentPanel';
+import InteractiveCodeViewer from './components/InteractiveCodeViewer';
 
 export default function Home() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -20,6 +22,10 @@ export default function Home() {
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [refreshDocuments, setRefreshDocuments] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [allCodeBlocks, setAllCodeBlocks] = useState<CodeBlock[]>([]);
+  const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
+  const [isGeneratedContentPanelOpen, setIsGeneratedContentPanelOpen] = useState(false);
+  const [activeCodeBlockId, setActiveCodeBlockId] = useState<string | null>(null);
 
   const [uploadChannelId, setUploadChannelId] = useState<string | null>(null);
   const { inProgressFiles, setUploadCompleteCallback } = useUploadSocket(uploadChannelId);
@@ -27,13 +33,9 @@ export default function Home() {
   const { statusUpdate, setOnTitleUpdate } = useChatSocket(selectedSessionId);
 
   const [isChatPanelPermanentlyOpen, setIsChatPanelPermanentlyOpen] = useState(false);
-  const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
-  const filePanelRef = useRef<HTMLDivElement>(null);
-  const fileButtonRef = useRef<HTMLButtonElement>(null);
 
   const clientId = "user_12345";
 
-  // Fetch sessions and select the first one on initial load only.
   useEffect(() => {
     const loadInitialData = async () => {
       if (isInitialLoad) {
@@ -52,24 +54,6 @@ export default function Home() {
     };
     loadInitialData();
   }, [clientId, isInitialLoad]);
-
-  // Effect to handle clicks outside of the file panel and its button
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        isFilePanelOpen &&
-        filePanelRef.current && !filePanelRef.current.contains(event.target as Node) &&
-        fileButtonRef.current && !fileButtonRef.current.contains(event.target as Node)
-      ) {
-        setIsFilePanelOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isFilePanelOpen]);
-
 
   const triggerDocumentRefresh = useCallback(() => {
     setRefreshDocuments(prev => !prev);
@@ -107,6 +91,9 @@ export default function Home() {
   const handleNewChat = () => {
     setSelectedSessionId(null);
     setSelectedDocs(new Set());
+    setIsFilePanelOpen(false);
+    setIsGeneratedContentPanelOpen(false);
+    setActiveCodeBlockId(null);
   };
 
   const handleSessionCreated = (newSession: Session) => {
@@ -131,7 +118,31 @@ export default function Home() {
   const handleSelectSession = useCallback((id: string) => {
     setSelectedSessionId(id);
     setSelectedDocs(new Set());
+    setIsFilePanelOpen(false);
+    setIsGeneratedContentPanelOpen(false);
+    setActiveCodeBlockId(null);
   }, []);
+
+  const handleNewCodeBlocks = (newBlocks: CodeBlock[]) => {
+    setAllCodeBlocks(prev => {
+        const otherSessionBlocks = prev.filter(b => b.sessionId !== selectedSessionId);
+        return [...otherSessionBlocks, ...newBlocks];
+    });
+
+    const latestBlock = newBlocks[newBlocks.length - 1];
+    if (latestBlock && !latestBlock.isComplete) {
+        setActiveCodeBlockId(latestBlock.id);
+        setIsGeneratedContentPanelOpen(false); // Close file list to show viewer
+    }
+  };
+
+  const handleCloseCodeViewer = () => {
+    setActiveCodeBlockId(null);
+    setIsGeneratedContentPanelOpen(true); // Open the list after closing a viewer
+  };
+
+  const sessionCodeBlocks = allCodeBlocks.filter(b => b.sessionId === selectedSessionId);
+  const activeCodeBlock = allCodeBlocks.find(b => b.id === activeCodeBlockId) || null;
 
   return (
     <div className="flex h-screen font-sans bg-background overflow-hidden">
@@ -147,11 +158,24 @@ export default function Home() {
       />
       
       <div className="flex-1 flex overflow-hidden">
-        <main className={`flex-1 flex flex-col h-full relative transition-all duration-300 ease-in-out ${isChatPanelPermanentlyOpen ? 'ml-0' : 'ml-0'}`}>
-            <div className="absolute top-4 right-8 z-30">
+        <main className={`flex-1 flex flex-col h-full relative transition-all duration-300 ease-in-out`}>
+            <div className="absolute top-4 right-8 z-30 flex space-x-2">
                 <button 
-                    ref={fileButtonRef}
-                    onClick={() => setIsFilePanelOpen(!isFilePanelOpen)} 
+                    onClick={() => {
+                        setIsGeneratedContentPanelOpen(!isGeneratedContentPanelOpen);
+                        setIsFilePanelOpen(false);
+                        setActiveCodeBlockId(null);
+                    }} 
+                    className="p-3 rounded-full bg-white shadow-md hover:bg-gray-100 transition-colors"
+                >
+                    <Code2 size={20} className="text-primary-text" />
+                </button>
+                <button 
+                    onClick={() => {
+                        setIsFilePanelOpen(!isFilePanelOpen);
+                        setIsGeneratedContentPanelOpen(false);
+                        setActiveCodeBlockId(null);
+                    }} 
                     className="p-3 rounded-full bg-white shadow-md hover:bg-gray-100 transition-colors"
                 >
                     <FileUp size={20} className="text-primary-text" />
@@ -163,23 +187,27 @@ export default function Home() {
                 clientId={clientId}
                 statusUpdate={statusUpdate}
                 onSessionCreated={handleSessionCreated}
+                onNewCodeBlocks={handleNewCodeBlocks}
             />
         </main>
 
-        <div 
-            ref={filePanelRef}
-            className={`transition-all duration-300 ease-in-out flex-shrink-0 overflow-hidden ${isFilePanelOpen ? 'w-[320px] p-3' : 'w-0'}`}
-        >
-            {isFilePanelOpen && <FileManagementPanel 
-                documents={documents}
-                inProgressFiles={inProgressFiles}
-                onFileUpload={() => setIsModalOpen(true)}
-                selectedDocs={selectedDocs}
-                setSelectedDocs={setSelectedDocs}
-                isNewChatMode={!selectedSessionId || sessions.find(s => s.id === selectedSessionId)?.title === 'New Chat'}
-                clientId={clientId}
-                onDeleteSuccess={triggerDocumentRefresh}
-            />}
+        <div className="transition-all duration-300 ease-in-out">
+            {activeCodeBlock ? (
+                <InteractiveCodeViewer codeBlock={activeCodeBlock} onClose={handleCloseCodeViewer} />
+            ) : isGeneratedContentPanelOpen ? (
+                <GeneratedContentPanel codeBlocks={sessionCodeBlocks} onSelectCodeBlock={setActiveCodeBlockId} />
+            ) : isFilePanelOpen ? (
+                <FileManagementPanel 
+                    documents={documents}
+                    inProgressFiles={inProgressFiles}
+                    onFileUpload={() => setIsModalOpen(true)}
+                    selectedDocs={selectedDocs}
+                    setSelectedDocs={setSelectedDocs}
+                    isNewChatMode={!selectedSessionId}
+                    clientId={clientId}
+                    onDeleteSuccess={triggerDocumentRefresh}
+                />
+            ) : null}
         </div>
       </div>
       

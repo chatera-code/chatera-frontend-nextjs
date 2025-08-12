@@ -12,10 +12,23 @@ export interface Session {
   isPinned: boolean;
 }
 
-export interface Message {
-  type: 'user' | 'ai';
-  text: string;
+export interface CodeBlock {
+  id: string;
+  sessionId: string;
+  language: string;
+  content: string;
+  isComplete: boolean;
 }
+
+export type Message = 
+  | { type: 'user'; text: string; }
+  | { 
+      type: 'ai'; 
+      text: string; 
+      thinkingEvents: string[]; 
+      isThinkingVisible: boolean; 
+      codeBlocks: CodeBlock[];
+    };
 
 export interface UploadingFile {
   id: number;

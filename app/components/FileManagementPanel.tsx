@@ -53,7 +53,7 @@ export default function FileManagementPanel({ documents, inProgressFiles = [], o
     }
   };
   return (
-    <aside className="w-[300px] bg-sidebar-bg p-3 flex flex-col h-screen border-l border-border-color rounded-l-2xl shadow-2xl">
+    <aside className="w-[300px] bg-sidebar-bg p-3 flex flex-col h-full border-l border-border-color rounded-l-2xl shadow-2xl">
         {documents.length === 0 && isNewChatMode && (
             <div className="p-4 mb-4 text-center bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 rounded-lg">
                 <p className="font-bold">Welcome!</p>
