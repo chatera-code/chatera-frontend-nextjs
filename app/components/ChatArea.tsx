@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Send, LoaderCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, LoaderCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Code } from 'lucide-react';
 import { Message, Session, CodeBlock } from '../types';
 import { fetchChatHistory, sendMessage, createNewSession } from '../lib/api';
-import { useChatSocket } from '../hooks/useChatSocket';
 import MarkdownRenderer from './MarkdownRenderer';
 import Image from 'next/image';
 import AnimatedBrain from './AnimatedBrain';
@@ -16,11 +15,15 @@ interface ChatAreaProps {
   clientId: string;
   statusUpdate: any;
   onSessionCreated: (session: Session) => void;
-  onNewCodeBlocks: (codeBlocks: CodeBlock[]) => void;
+  onNewCodeBlocks: (codeBlocks: CodeBlock[], streaming: boolean) => void;
+  isCanvasMode: boolean;
+  setIsCanvasMode: (isCanvasMode: boolean) => void;
+  onOpenCodeCanvas: (id: string) => void;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
 }
 
-export default function ChatArea({ selectedSessionId, selectedDocs, clientId, statusUpdate, onSessionCreated, onNewCodeBlocks }: ChatAreaProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export default function ChatArea({ selectedSessionId, selectedDocs, clientId, statusUpdate, onSessionCreated, onNewCodeBlocks, isCanvasMode, setIsCanvasMode, onOpenCodeCanvas, messages, setMessages }: ChatAreaProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -30,6 +33,22 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
 
   const isChatStarted = messages.length > 0;
   const isInputDisabled = isStreaming;
+
+  const parseCodeBlocks = (text: string, sessionId: string): CodeBlock[] => {
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    const blocks: CodeBlock[] = [];
+    let match;
+    while ((match = codeBlockRegex.exec(text)) !== null) {
+      blocks.push({
+        id: uuidv4(),
+        sessionId,
+        language: match[1] || 'text',
+        content: match[2],
+        isComplete: true,
+      });
+    }
+    return blocks;
+  };
 
   useEffect(() => {
     if (justCreatedSessionRef.current) {
@@ -46,7 +65,7 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
             msg.type === 'ai' ? { ...msg, thinkingEvents: [], isThinkingVisible: false, codeBlocks: parseCodeBlocks(msg.text, selectedSessionId) } : msg
           );
           setMessages(formattedHistory);
-          onNewCodeBlocks(formattedHistory.flatMap(m => m.type === 'ai' ? m.codeBlocks : []));
+          onNewCodeBlocks(formattedHistory.flatMap((m: Message) => m.type === 'ai' ? m.codeBlocks : []), false);
         } catch (error) {
           console.error("Failed to load chat history:", error);
           setMessages([]);
@@ -88,7 +107,7 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
     setInput('');
     setIsStreaming(true);
 
-    setMessages(prev => [...prev, { type: 'ai', text: '', thinkingEvents: [], isThinkingVisible: false, codeBlocks: [] }]);
+    setMessages(prev => [...prev, { type: 'ai', text: '', thinkingEvents: [], isThinkingVisible: false, codeBlocks: [], canvasMode: isCanvasMode }]);
 
     let currentSessionId = selectedSessionId;
 
@@ -115,8 +134,34 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
             const lastMessage = newMessages[newMessages.length - 1];
             if (lastMessage && lastMessage.type === 'ai') {
                 const newText = lastMessage.text + token;
-                const updatedCodeBlocks = parseCodeBlocks(newText, currentSessionId!);
-                onNewCodeBlocks(updatedCodeBlocks);
+                let updatedCodeBlocks = [...lastMessage.codeBlocks];
+
+                if (lastMessage.canvasMode) {
+                    const lastBlock = updatedCodeBlocks[updatedCodeBlocks.length - 1];
+                    if (lastBlock && !lastBlock.isComplete) {
+                        lastBlock.content += token;
+                        if (token.includes('```')) {
+                            lastBlock.isComplete = true;
+                            lastBlock.content = lastBlock.content.replace('```', '');
+                        }
+                    } else if (token.includes('```')) {
+                        const match = /```(\w+)?\n/.exec(token);
+                        if(match) {
+                            const newBlock: CodeBlock = {
+                                id: uuidv4(),
+                                sessionId: currentSessionId!,
+                                language: match[1] || 'text',
+                                content: '',
+                                isComplete: false,
+                            };
+                            updatedCodeBlocks.push(newBlock);
+                            onNewCodeBlocks(updatedCodeBlocks, true);
+                        }
+                    }
+                } else {
+                    updatedCodeBlocks = parseCodeBlocks(newText, currentSessionId!);
+                }
+                
                 newMessages[newMessages.length - 1] = { ...lastMessage, text: newText, codeBlocks: updatedCodeBlocks };
             }
             return newMessages;
@@ -128,22 +173,6 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
         setIsStreaming(false);
       }
     );
-  };
-
-  const parseCodeBlocks = (text: string, sessionId: string): CodeBlock[] => {
-    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    const blocks: CodeBlock[] = [];
-    let match;
-    while ((match = codeBlockRegex.exec(text)) !== null) {
-      blocks.push({
-        id: uuidv4(),
-        sessionId,
-        language: match[1] || 'text',
-        content: match[2],
-        isComplete: true,
-      });
-    }
-    return blocks;
   };
   
   const handleToggleThinking = (index: number) => {
@@ -215,7 +244,7 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
                               )}
                             </div>
                           )}
-                          <MarkdownRenderer content={msg.text} />
+                          <MarkdownRenderer content={msg.text} codeBlocks={msg.codeBlocks} isCanvasMode={msg.canvasMode} onOpenCodeCanvas={onOpenCodeCanvas} />
                         </div>
                       )}
                   </div>
@@ -240,7 +269,7 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={"How may I help you today?"}
-                className="w-full p-4 pr-14 text-2xl resize-none disabled:cursor-not-allowed h-32 rounded-3xl bg-background border border-gray-400 focus:outline-none focus:ring-0 disabled:bg-background"
+                className="w-full p-4 pr-14 pl-16 text-2xl resize-none disabled:cursor-not-allowed h-32 rounded-3xl bg-background border border-gray-400 focus:outline-none focus:ring-0 disabled:bg-background"
                 disabled={isInputDisabled}
                 onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -249,6 +278,13 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
                 }
                 }}
             />
+            <button
+                type="button"
+                onClick={() => setIsCanvasMode(!isCanvasMode)}
+                className={`absolute left-4 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center text-white transition-colors ${isCanvasMode ? 'bg-blue-500' : 'bg-gray-400'}`}
+            >
+                <Code size={18} />
+            </button>
             <button
                 type="submit"
                 className="absolute right-4 top-1/2 -translate-y-1/2 w-9 h-9 bg-primary-accent rounded-full flex items-center justify-center text-white hover:bg-gray-700 transition-colors disabled:bg-gray-400"

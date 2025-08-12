@@ -2,17 +2,16 @@
 
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Download, Maximize } from 'lucide-react';
+import { Download, Maximize, Code } from 'lucide-react';
 import { CodeBlock } from '../types';
 
-// Define the props for the component
 interface MarkdownRendererProps {
   content: string;
   codeBlocks?: CodeBlock[];
+  isCanvasMode?: boolean;
   onOpenCodeCanvas?: (id: string) => void;
 }
 
-// Custom interface for code component props that includes inline property
 interface CodeComponentProps {
   node?: any;
   inline?: boolean;
@@ -21,7 +20,6 @@ interface CodeComponentProps {
   [key: string]: any;
 }
 
-// Helper function to safely extract text from a cell (th or td)
 const getCellText = (cell: any): string => {
     if (cell && cell.type === 'element' && cell.children && cell.children.length > 0) {
         const textNode = cell.children[0];
@@ -29,15 +27,13 @@ const getCellText = (cell: any): string => {
             return textNode.value;
         }
     }
-    return ''; // Return empty string for empty or complex cells
+    return '';
 };
 
-// Function to convert table data to CSV format
 const toCsv = (table: string[][]): string => {
     return table.map(row => 
         row.map(cell => {
             const text = cell || '';
-            // Escape quotes and wrap in quotes if it contains commas or newlines
             if (text.includes(',') || text.includes('\n') || text.includes('"')) {
                 return `"${text.replace(/"/g, '""')}"`;
             }
@@ -59,31 +55,44 @@ const handleExportToExcel = (table: string[][]) => {
     URL.revokeObjectURL(url);
 };
 
-export default function MarkdownRenderer({ content, codeBlocks = [], onOpenCodeCanvas }: MarkdownRendererProps) {
+export default function MarkdownRenderer({ content, codeBlocks = [], isCanvasMode, onOpenCodeCanvas }: MarkdownRendererProps) {
   
   const components: Components = {
+    p: ({ children }) => <div className="mb-4">{children}</div>,
     code(props: CodeComponentProps) {
       const { node, inline, className, children, ...rest } = props;
       const match = /language-(\w+)/.exec(className || '');
       const lang = match ? match[1] : 'text';
       const codeContent = String(children || '').trim();
 
-      const block = codeBlocks.find(cb => cb.content.trim() === codeContent && cb.language === lang);
+      const block = codeBlocks.find(cb => codeContent.includes(cb.content.trim()));
 
-      if (!inline && block && onOpenCodeCanvas) {
+      if (!inline && isCanvasMode && block && onOpenCodeCanvas) {
         return (
-          <div className="my-4 rounded-md bg-sidebar-bg border border-border-color p-4 font-sans shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-secondary-text font-semibold uppercase">{lang}</span>
+          <div className="my-4 rounded-md bg-blue-50 border border-blue-200 p-4 font-sans shadow-sm">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <Code size={16} className="mr-2 text-blue-600" />
+                <span className="text-sm text-blue-800 font-semibold">{`code-block.${lang}`}</span>
+              </div>
               <button 
                 onClick={() => onOpenCodeCanvas(block.id)}
-                className="text-xs flex items-center text-secondary-text hover:text-primary-text transition-colors font-semibold"
+                className="text-sm flex items-center text-blue-600 hover:text-blue-800 transition-colors font-semibold"
               >
-                <Maximize size={14} className="mr-1.5" />
-                Open Interactive Canvas
+                Open Canvas
               </button>
             </div>
-            <pre className="bg-white p-2 rounded text-sm overflow-x-auto">
+          </div>
+        );
+      }
+      
+      if (!inline) {
+        return (
+          <div className="my-4 rounded-md bg-sidebar-bg border border-border-color font-sans shadow-sm">
+            <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-border-color rounded-t-md">
+              <span className="text-xs text-secondary-text font-semibold uppercase">{lang}</span>
+            </div>
+            <pre className="bg-white p-4 rounded-b-md text-sm overflow-x-auto">
               <code className={className} {...rest}>{children}</code>
             </pre>
           </div>

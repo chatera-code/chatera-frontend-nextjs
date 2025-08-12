@@ -56,7 +56,7 @@ export default function InteractiveCodeViewer({ codeBlock, onClose }: Interactiv
   const isRenderable = codeBlock.language.toLowerCase() === 'html';
 
   return (
-    <aside className="w-[500px] bg-white flex flex-col h-full border-l border-border-color shadow-2xl">
+    <aside className="w-full bg-white flex flex-col h-full border-l border-border-color shadow-2xl">
       <div className="flex items-center justify-between p-3 border-b bg-sidebar-bg">
         <div className="flex items-center space-x-4">
           {isRenderable && (
@@ -96,7 +96,7 @@ export default function InteractiveCodeViewer({ codeBlock, onClose }: Interactiv
           <SyntaxHighlighter
             language={codeBlock.language}
             style={ghcolors}
-            customStyle={{ height: '100%', margin: 0, fontSize: '1rem' }}
+            customStyle={{ height: '100%', margin: 0, fontSize: '1rem', overflowX: 'auto' }}
             showLineNumbers
           >
             {codeBlock.content}

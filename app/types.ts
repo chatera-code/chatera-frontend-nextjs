@@ -28,6 +28,7 @@ export type Message =
       thinkingEvents: string[]; 
       isThinkingVisible: boolean; 
       codeBlocks: CodeBlock[];
+      canvasMode?: boolean; // Added to store canvas state per message
     };
 
 export interface UploadingFile {
