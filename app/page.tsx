@@ -24,13 +24,12 @@ export default function Home() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [allCodeBlocks, setAllCodeBlocks] = useState<CodeBlock[]>([]);
   
-  // State for right-side panels
+  // Unified state for right-side panel visibility
   const [rightPanel, setRightPanel] = useState<'files' | 'code' | null>(null);
   const [activeCodeBlockId, setActiveCodeBlockId] = useState<string | null>(null);
 
   const [isCanvasMode, setIsCanvasMode] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-
 
   const [uploadChannelId, setUploadChannelId] = useState<string | null>(null);
   const { inProgressFiles, setUploadCompleteCallback } = useUploadSocket(uploadChannelId);
@@ -41,7 +40,6 @@ export default function Home() {
 
   const clientId = "user_12345";
   
-  // Load canvas mode from localStorage on initial load
   useEffect(() => {
     const savedCanvasMode = localStorage.getItem('canvasMode');
     if (savedCanvasMode) {
@@ -49,7 +47,6 @@ export default function Home() {
     }
   }, []);
 
-  // Save canvas mode to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('canvasMode', JSON.stringify(isCanvasMode));
   }, [isCanvasMode]);
@@ -139,24 +136,17 @@ export default function Home() {
     setActiveCodeBlockId(null);
   }, []);
 
-  const handleNewCodeBlocks = (newBlocks: CodeBlock[], streaming: boolean) => {
+  const handleNewCodeBlocks = (newBlocks: CodeBlock[]) => {
     setAllCodeBlocks(prev => {
-        const otherSessionBlocks = prev.filter(b => b.sessionId !== selectedSessionId);
+        const blockIds = new Set(newBlocks.map(b => b.id));
+        const otherSessionBlocks = prev.filter(b => b.sessionId !== selectedSessionId || !blockIds.has(b.id));
         return [...otherSessionBlocks, ...newBlocks];
     });
-
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage?.type === 'ai' && lastMessage.canvasMode && streaming) {
-      const latestBlock = newBlocks.find(b => !b.isComplete);
-      if (latestBlock) {
-          handleOpenCodeCanvas(latestBlock.id);
-      }
-    }
   };
 
   const handleOpenCodeCanvas = (id: string) => {
     setActiveCodeBlockId(id);
-    setRightPanel(null);
+    setRightPanel(null); // Ensure other panels are closed when canvas opens
   };
 
   const handleCloseCodeViewer = () => {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Send, LoaderCircle, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, Code } from 'lucide-react';
+import { Send, LoaderCircle, ChevronDown, ChevronUp, Code } from 'lucide-react';
 import { Message, Session, CodeBlock } from '../types';
 import { fetchChatHistory, sendMessage, createNewSession } from '../lib/api';
 import MarkdownRenderer from './MarkdownRenderer';
@@ -39,13 +39,15 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
     const blocks: CodeBlock[] = [];
     let match;
     while ((match = codeBlockRegex.exec(text)) !== null) {
-      blocks.push({
-        id: uuidv4(),
-        sessionId,
-        language: match[1] || 'text',
-        content: match[2],
-        isComplete: true,
-      });
+      if (match[1] !== 'txt') { // Filter out plain text blocks
+        blocks.push({
+          id: uuidv4(),
+          sessionId,
+          language: match[1] || 'text',
+          content: match[2],
+          isComplete: true,
+        });
+      }
     }
     return blocks;
   };
@@ -139,14 +141,13 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
                 if (lastMessage.canvasMode) {
                     const lastBlock = updatedCodeBlocks[updatedCodeBlocks.length - 1];
                     if (lastBlock && !lastBlock.isComplete) {
-                        lastBlock.content += token;
+                        lastBlock.content += token.replace('```', '');
                         if (token.includes('```')) {
                             lastBlock.isComplete = true;
-                            lastBlock.content = lastBlock.content.replace('```', '');
                         }
                     } else if (token.includes('```')) {
                         const match = /```(\w+)?\n/.exec(token);
-                        if(match) {
+                        if(match && match[1] !== 'txt') {
                             const newBlock: CodeBlock = {
                                 id: uuidv4(),
                                 sessionId: currentSessionId!,
@@ -167,7 +168,17 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
             return newMessages;
         });
       },
-      () => { setIsStreaming(false); },
+      () => { 
+        setIsStreaming(false);
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage && lastMessage.type === 'ai') {
+            lastMessage.codeBlocks.forEach(b => b.isComplete = true);
+          }
+          return newMessages;
+        });
+      },
       (error) => {
         setMessages(prev => prev.slice(0, -1).concat({ type: 'ai', text: `Error: ${error.message}`, thinkingEvents: [], isThinkingVisible: false, codeBlocks: [] }));
         setIsStreaming(false);
