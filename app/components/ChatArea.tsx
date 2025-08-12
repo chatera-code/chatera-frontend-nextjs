@@ -15,11 +15,12 @@ interface ChatAreaProps {
   clientId: string;
   statusUpdate: any;
   onSessionCreated: (session: Session) => void;
-  onNewCodeBlocks: (codeBlocks: CodeBlock[], streaming: boolean) => void;
+  onNewCodeBlocks: (messageId: string, codeBlocks: CodeBlock[], isStreaming: boolean) => void;
   isCanvasMode: boolean;
   setIsCanvasMode: (isCanvasMode: boolean) => void;
   onOpenCodeCanvas: (id: string) => void;
   messages: Message[];
+  // FIX: This is the corrected type for the setMessages prop from useState
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
 }
 
@@ -34,19 +35,22 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
   const isChatStarted = messages.length > 0;
   const isInputDisabled = isStreaming;
 
-  const parseCodeBlocks = (text: string, sessionId: string): CodeBlock[] => {
+  const parseCodeBlocks = (text: string, sessionId: string, messageId: string): CodeBlock[] => {
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
     const blocks: CodeBlock[] = [];
     let match;
+    let blockIndex = 0;
     while ((match = codeBlockRegex.exec(text)) !== null) {
-      if (match[1] !== 'txt') { // Filter out plain text blocks
+      if (match[1] !== 'txt') {
         blocks.push({
-          id: uuidv4(),
+          id: `msg-${messageId}-block-${blockIndex}`,
           sessionId,
+          messageId,
           language: match[1] || 'text',
           content: match[2],
           isComplete: true,
         });
+        blockIndex++;
       }
     }
     return blocks;
@@ -63,11 +67,13 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
       const loadHistory = async () => {
         try {
           const history = await fetchChatHistory(selectedSessionId);
-          const formattedHistory = history.map((msg: Message) => 
-            msg.type === 'ai' ? { ...msg, thinkingEvents: [], isThinkingVisible: false, codeBlocks: parseCodeBlocks(msg.text, selectedSessionId) } : msg
-          );
+          const formattedHistory = history.map((msg: any) => ({
+                ...msg,
+                thinkingEvents: [],
+                isThinkingVisible: false,
+                codeBlocks: msg.type === 'ai' ? parseCodeBlocks(msg.text, selectedSessionId, msg.id) : [],
+          }));
           setMessages(formattedHistory);
-          onNewCodeBlocks(formattedHistory.flatMap((m: Message) => m.type === 'ai' ? m.codeBlocks : []), false);
         } catch (error) {
           console.error("Failed to load chat history:", error);
           setMessages([]);
@@ -80,14 +86,14 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
       setMessages([]);
       setIsLoading(false);
     }
-  }, [selectedSessionId]);
+  }, [selectedSessionId, setMessages]);
 
   useEffect(() => {
     if (isStreaming && statusUpdate && statusUpdate.message) {
       const eventId = `${statusUpdate.timestamp}-${statusUpdate.message}`;
       if (lastProcessedEventId.current !== eventId) {
         lastProcessedEventId.current = eventId;
-        setMessages(prev => {
+        setMessages((prev) => {
           const newMessages = [...prev];
           const lastMessage = newMessages[newMessages.length - 1];
           if (lastMessage && lastMessage.type === 'ai') {
@@ -97,19 +103,20 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
         });
       }
     }
-  }, [statusUpdate, isStreaming]);
+  }, [statusUpdate, isStreaming, setMessages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    const userMessage: Message = { type: 'user', text: input };
+    const userMessage: Message = { type: 'user', text: input, id: uuidv4() };
     const messageText = input;
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsStreaming(true);
 
-    setMessages(prev => [...prev, { type: 'ai', text: '', thinkingEvents: [], isThinkingVisible: false, codeBlocks: [], canvasMode: isCanvasMode }]);
+    const aiMessageId = uuidv4();
+    setMessages((prev) => [...prev, { type: 'ai', id: aiMessageId, text: '', thinkingEvents: [], isThinkingVisible: false, codeBlocks: [], canvasMode: isCanvasMode }]);
 
     let currentSessionId = selectedSessionId;
 
@@ -122,7 +129,7 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
         onSessionCreated(newSessionForUi);
         currentSessionId = newSessionForUi.id;
       } catch (error) {
-        setMessages(prev => prev.slice(0, -1).concat({ type: 'ai', text: `Error: Could not create a new chat session. ${error}`, thinkingEvents: [], isThinkingVisible: false, codeBlocks: [] }));
+        setMessages((prev) => prev.slice(0, -1).concat({ type: 'ai', id: uuidv4(), text: `Error: Could not create a new chat session. ${error}`, thinkingEvents: [], isThinkingVisible: false, codeBlocks: [] }));
         setIsStreaming(false);
         return;
       }
@@ -131,63 +138,44 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
     await sendMessage(
       { clientId, sessionId: currentSessionId, message: messageText, documentIds: Array.from(selectedDocs) },
       (token) => {
-        setMessages(prev => {
+        setMessages((prev) => {
             const newMessages = [...prev];
             const lastMessage = newMessages[newMessages.length - 1];
             if (lastMessage && lastMessage.type === 'ai') {
                 const newText = lastMessage.text + token;
-                let updatedCodeBlocks = [...lastMessage.codeBlocks];
-
-                if (lastMessage.canvasMode) {
-                    const lastBlock = updatedCodeBlocks[updatedCodeBlocks.length - 1];
-                    if (lastBlock && !lastBlock.isComplete) {
-                        lastBlock.content += token.replace('```', '');
-                        if (token.includes('```')) {
-                            lastBlock.isComplete = true;
-                        }
-                    } else if (token.includes('```')) {
-                        const match = /```(\w+)?\n/.exec(token);
-                        if(match && match[1] !== 'txt') {
-                            const newBlock: CodeBlock = {
-                                id: uuidv4(),
-                                sessionId: currentSessionId!,
-                                language: match[1] || 'text',
-                                content: '',
-                                isComplete: false,
-                            };
-                            updatedCodeBlocks.push(newBlock);
-                            onNewCodeBlocks(updatedCodeBlocks, true);
-                        }
-                    }
-                } else {
-                    updatedCodeBlocks = parseCodeBlocks(newText, currentSessionId!);
+                const updatedCodeBlocks = parseCodeBlocks(newText, currentSessionId!, lastMessage.id);
+                const codeBlockCount = (newText.match(/```/g) || []).length;
+                if (codeBlockCount % 2 !== 0 && updatedCodeBlocks.length > 0) {
+                    updatedCodeBlocks[updatedCodeBlocks.length - 1].isComplete = false;
                 }
                 
                 newMessages[newMessages.length - 1] = { ...lastMessage, text: newText, codeBlocks: updatedCodeBlocks };
+                onNewCodeBlocks(lastMessage.id, updatedCodeBlocks, true);
             }
             return newMessages;
         });
       },
       () => { 
         setIsStreaming(false);
-        setMessages(prev => {
+        setMessages((prev) => {
           const newMessages = [...prev];
           const lastMessage = newMessages[newMessages.length - 1];
           if (lastMessage && lastMessage.type === 'ai') {
             lastMessage.codeBlocks.forEach(b => b.isComplete = true);
+            onNewCodeBlocks(lastMessage.id, lastMessage.codeBlocks, false);
           }
           return newMessages;
         });
       },
       (error) => {
-        setMessages(prev => prev.slice(0, -1).concat({ type: 'ai', text: `Error: ${error.message}`, thinkingEvents: [], isThinkingVisible: false, codeBlocks: [] }));
+        setMessages((prev) => prev.slice(0, -1).concat({ type: 'ai', id: uuidv4(), text: `Error: ${error.message}`, thinkingEvents: [], isThinkingVisible: false, codeBlocks: [] }));
         setIsStreaming(false);
       }
     );
   };
   
   const handleToggleThinking = (index: number) => {
-    setMessages(prev => 
+    setMessages((prev) => 
       prev.map((msg, i) => {
         if (i === index && msg.type === 'ai') {
           return { ...msg, isThinkingVisible: !msg.isThinkingVisible };
@@ -214,7 +202,7 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
             <div className="flex justify-center items-center h-full"><LoaderCircle className="animate-spin text-primary-accent" size={32} /></div>
             ) : (
             messages.map((msg, index) => (
-              <div key={index} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start items-start'}`}>
+              <div key={msg.id} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start items-start'}`}>
                 {msg.type === 'ai' && (
                   <div className="flex-shrink-0 mt-1 mr-3">
                     <Image src="/chatera-logo.svg" alt="Chatera Logo" width={32} height={32} />
@@ -255,7 +243,7 @@ export default function ChatArea({ selectedSessionId, selectedDocs, clientId, st
                               )}
                             </div>
                           )}
-                          <MarkdownRenderer content={msg.text} codeBlocks={msg.codeBlocks} isCanvasMode={msg.canvasMode} onOpenCodeCanvas={onOpenCodeCanvas} />
+                          <MarkdownRenderer content={msg.text} codeBlocks={msg.codeBlocks} isCanvasMode={isCanvasMode} onOpenCodeCanvas={onOpenCodeCanvas} />
                         </div>
                       )}
                   </div>

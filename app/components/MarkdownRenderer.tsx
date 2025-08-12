@@ -2,7 +2,7 @@
 
 import ReactMarkdown, { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Download, Maximize, Code } from 'lucide-react';
+import { Download, Code } from 'lucide-react';
 import { CodeBlock } from '../types';
 
 interface MarkdownRendererProps {
@@ -63,43 +63,50 @@ export default function MarkdownRenderer({ content, codeBlocks = [], isCanvasMod
       const { node, inline, className, children, ...rest } = props;
       const match = /language-(\w+)/.exec(className || '');
       const lang = match ? match[1] : 'text';
+
+      if (inline) {
+        return <code className={className} {...rest}>{children}</code>;
+      }
+
       const codeContent = String(children || '').trim();
+      const block = codeBlocks.find(cb => cb.content.trim() === codeContent && cb.language === lang);
 
-      const block = codeBlocks.find(cb => codeContent.includes(cb.content.trim()));
-
-      if (!inline && isCanvasMode && block && onOpenCodeCanvas) {
-        return (
-          <div className="my-4 rounded-md bg-blue-50 border border-blue-200 p-4 font-sans shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <Code size={16} className="mr-2 text-blue-600" />
-                <span className="text-sm text-blue-800 font-semibold">{`code-block.${lang}`}</span>
+      // FIX for Bug #1: If in canvas mode and it's a code file (not 'txt'),
+      // either show the "Open Canvas" button or nothing. Do not render inline.
+      if (isCanvasMode && lang !== 'txt') {
+        if (block && onOpenCodeCanvas) {
+          return (
+            <div className="my-4 rounded-md bg-blue-50 border border-blue-200 p-4 font-sans shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <Code size={16} className="mr-2 text-blue-600" />
+                  <span className="text-sm text-blue-800 font-semibold">{`code-block.${lang}`}</span>
+                </div>
+                <button 
+                  onClick={() => onOpenCodeCanvas(block.id)}
+                  className="text-sm flex items-center text-blue-600 hover:text-blue-800 transition-colors font-semibold"
+                >
+                  Open Canvas
+                </button>
               </div>
-              <button 
-                onClick={() => onOpenCodeCanvas(block.id)}
-                className="text-sm flex items-center text-blue-600 hover:text-blue-800 transition-colors font-semibold"
-              >
-                Open Canvas
-              </button>
             </div>
-          </div>
-        );
+          );
+        }
+        // If block is not found or no handler, return null to prevent rendering anything.
+        return null;
       }
       
-      if (!inline) {
-        return (
-          <div className="my-4 rounded-md bg-sidebar-bg border border-border-color font-sans shadow-sm">
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-border-color rounded-t-md">
-              <span className="text-xs text-secondary-text font-semibold uppercase">{lang}</span>
-            </div>
-            <pre className="bg-white p-4 rounded-b-md text-sm overflow-x-auto">
-              <code className={className} {...rest}>{children}</code>
-            </pre>
+      // Default rendering for when canvas mode is OFF, or for 'txt' blocks.
+      return (
+        <div className="my-4 rounded-md bg-sidebar-bg border border-border-color font-sans shadow-sm">
+          <div className="flex items-center justify-between px-4 py-2 bg-gray-100 border-b border-border-color rounded-t-md">
+            <span className="text-xs text-secondary-text font-semibold uppercase">{lang}</span>
           </div>
-        );
-      }
-
-      return <code className={className} {...rest}>{children}</code>;
+          <pre className="bg-white p-4 rounded-b-md text-sm overflow-x-auto">
+            <code className={className} {...rest}>{children}</code>
+          </pre>
+        </div>
+      );
     },
     table({ node, children, ...props }) {
         const tableData: string[][] = [];

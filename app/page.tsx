@@ -23,8 +23,7 @@ export default function Home() {
   const [refreshDocuments, setRefreshDocuments] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [allCodeBlocks, setAllCodeBlocks] = useState<CodeBlock[]>([]);
-  
-  // Unified state for right-side panel visibility
+
   const [rightPanel, setRightPanel] = useState<'files' | 'code' | null>(null);
   const [activeCodeBlockId, setActiveCodeBlockId] = useState<string | null>(null);
 
@@ -33,13 +32,13 @@ export default function Home() {
 
   const [uploadChannelId, setUploadChannelId] = useState<string | null>(null);
   const { inProgressFiles, setUploadCompleteCallback } = useUploadSocket(uploadChannelId);
-  
+
   const { statusUpdate, setOnTitleUpdate } = useChatSocket(selectedSessionId);
 
   const [isChatPanelPermanentlyOpen, setIsChatPanelPermanentlyOpen] = useState(false);
 
   const clientId = "user_12345";
-  
+
   useEffect(() => {
     const savedCanvasMode = localStorage.getItem('canvasMode');
     if (savedCanvasMode) {
@@ -103,8 +102,17 @@ export default function Home() {
     });
   }, [setUploadCompleteCallback, triggerDocumentRefresh]);
 
+  useEffect(() => {
+    const restoredCodeBlocks = messages
+      .filter(m => m.type === 'ai' && m.codeBlocks)
+      .flatMap(m => (m as any).codeBlocks);
+    setAllCodeBlocks(restoredCodeBlocks);
+  }, [messages]);
+
   const handleNewChat = () => {
     setSelectedSessionId(null);
+    setMessages([]);
+    setAllCodeBlocks([]);
     setSelectedDocs(new Set());
     setRightPanel(null);
     setActiveCodeBlockId(null);
@@ -114,12 +122,12 @@ export default function Home() {
     setSessions(prev => [newSession, ...prev]);
     setSelectedSessionId(newSession.id);
   };
-  
+
   const handleFileUpload = async (files: File[]) => {
     setIsModalOpen(false);
     const channelId = uuidv4();
     setUploadChannelId(channelId);
-    
+
     setTimeout(async () => {
         try {
             await uploadDocuments(clientId, files, channelId);
@@ -128,37 +136,38 @@ export default function Home() {
         }
     }, 500);
   };
-  
+
   const handleSelectSession = useCallback((id: string) => {
+    if (id === selectedSessionId) return;
     setSelectedSessionId(id);
+    setMessages([]);
+    setAllCodeBlocks([]);
     setSelectedDocs(new Set());
     setRightPanel(null);
     setActiveCodeBlockId(null);
-  }, []);
+  }, [selectedSessionId]);
 
-  const handleNewCodeBlocks = (newBlocks: CodeBlock[]) => {
-    setAllCodeBlocks(prev => {
-        const blockIds = new Set(newBlocks.map(b => b.id));
-        const otherSessionBlocks = prev.filter(b => b.sessionId !== selectedSessionId || !blockIds.has(b.id));
-        return [...otherSessionBlocks, ...newBlocks];
-    });
+  const handleNewCodeBlocks = (messageId: string, newBlocks: CodeBlock[], isStreaming: boolean) => {
+    if (isStreaming && isCanvasMode && newBlocks.length > 0) {
+        setRightPanel('code');
+    }
   };
 
   const handleOpenCodeCanvas = (id: string) => {
     setActiveCodeBlockId(id);
-    setRightPanel(null); // Ensure other panels are closed when canvas opens
+    setRightPanel(null);
   };
 
   const handleCloseCodeViewer = () => {
     setActiveCodeBlockId(null);
-    setRightPanel('code'); 
+    setRightPanel('code');
   };
-  
+
   const toggleCodePanel = () => {
     setActiveCodeBlockId(null);
     setRightPanel(prev => prev === 'code' ? null : 'code');
   };
-  
+
   const toggleFilePanel = () => {
     setActiveCodeBlockId(null);
     setRightPanel(prev => prev === 'files' ? null : 'files');
@@ -184,25 +193,25 @@ export default function Home() {
         isPermanentlyOpen={isChatPanelPermanentlyOpen}
         togglePermanentOpen={() => setIsChatPanelPermanentlyOpen(!isChatPanelPermanentlyOpen)}
       />
-      
+
       <div className="flex-1 flex overflow-hidden">
         <main className={`flex-1 flex flex-col h-full relative transition-all duration-300 ease-in-out ${mainContentWidth}`}>
             <div className="absolute top-4 right-8 z-30 flex space-x-2">
-                <button 
+                <button
                     onClick={toggleCodePanel}
                     className="p-3 rounded-full bg-white shadow-md hover:bg-gray-100 transition-colors"
                 >
                     <Code2 size={20} className="text-primary-text" />
                 </button>
-                <button 
+                <button
                     onClick={toggleFilePanel}
                     className="p-3 rounded-full bg-white shadow-md hover:bg-gray-100 transition-colors"
                 >
                     <FileUp size={20} className="text-primary-text" />
                 </button>
             </div>
-            <ChatArea 
-                selectedSessionId={selectedSessionId} 
+            <ChatArea
+                selectedSessionId={selectedSessionId}
                 selectedDocs={selectedDocs}
                 clientId={clientId}
                 statusUpdate={statusUpdate}
@@ -224,7 +233,7 @@ export default function Home() {
                 <GeneratedContentPanel codeBlocks={sessionCodeBlocks} onSelectCodeBlock={handleOpenCodeCanvas} />
             )}
             {rightPanel === 'files' && !isCanvasOpen && (
-                <FileManagementPanel 
+                <FileManagementPanel
                     documents={documents}
                     inProgressFiles={inProgressFiles}
                     onFileUpload={() => setIsModalOpen(true)}
@@ -237,7 +246,7 @@ export default function Home() {
             )}
         </div>
       </div>
-      
+
       <FileUploadModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

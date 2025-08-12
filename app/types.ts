@@ -15,20 +15,22 @@ export interface Session {
 export interface CodeBlock {
   id: string;
   sessionId: string;
+  messageId: string; 
   language: string;
   content: string;
   isComplete: boolean;
 }
 
-export type Message = 
-  | { type: 'user'; text: string; }
-  | { 
-      type: 'ai'; 
-      text: string; 
-      thinkingEvents: string[]; 
-      isThinkingVisible: boolean; 
+export type Message =
+  | { type: 'user'; id: string; text: string; }
+  | {
+      type: 'ai';
+      id: string; 
+      text: string;
+      thinkingEvents: string[];
+      isThinkingVisible: boolean;
       codeBlocks: CodeBlock[];
-      canvasMode?: boolean; // Added to store canvas state per message
+      canvasMode?: boolean;
     };
 
 export interface UploadingFile {
