@@ -30,7 +30,7 @@ export type Message =
       thinkingEvents: string[];
       isThinkingVisible: boolean;
       codeBlocks: CodeBlock[];
-      canvasMode?: boolean;
+      renderedWithCanvas?: boolean;
     };
 
 export interface UploadingFile {

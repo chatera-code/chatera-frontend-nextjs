@@ -78,13 +78,20 @@ export default function ChatArea({
       const loadHistory = async () => {
         try {
           const history = await fetchChatHistory(selectedSessionId);
-          // Ensure every message has a UNIQUE id locally (defensive against backend duplicates)
           const formattedHistory: Message[] = history.map((msg: any, i: number) => ({
             ...msg,
             id: msg.id ?? `hist-${selectedSessionId}-${i}`,
             thinkingEvents: [],
             isThinkingVisible: false,
-            codeBlocks: msg.type === 'ai' ? parseCodeBlocks(msg.text, selectedSessionId, msg.id ?? `hist-${selectedSessionId}-${i}`) : [],
+            codeBlocks:
+              msg.type === 'ai'
+                ? parseCodeBlocks(
+                  msg.text,
+                  selectedSessionId,
+                  msg.id ?? `hist-${selectedSessionId}-${i}`
+                )
+                : [],
+            renderedWithCanvas: msg.renderedWithCanvas ?? undefined // preserve if backend sends it
           }));
           setMessages(formattedHistory);
         } catch (error) {
@@ -131,7 +138,15 @@ export default function ChatArea({
     const aiMessageId = uuidv4();
     setMessages((prev) => [
       ...prev,
-      { type: 'ai', id: aiMessageId, text: '', thinkingEvents: [], isThinkingVisible: false, codeBlocks: [], canvasMode: isCanvasMode }
+      {
+        type: 'ai',
+        id: aiMessageId,
+        text: '',
+        thinkingEvents: [],
+        isThinkingVisible: false,
+        codeBlocks: [],
+        renderedWithCanvas: isCanvasMode // ✅ persist per-message mode
+      }
     ]);
 
     let currentSessionId = selectedSessionId;
@@ -162,31 +177,61 @@ export default function ChatArea({
 
     await sendMessage(
       { clientId, sessionId: currentSessionId, message: messageText, documentIds: Array.from(selectedDocs) },
+      // Inside sendMessage streaming callback
       (token) => {
         setMessages((prev) => {
           const newMessages = [...prev];
           const lastMessage = newMessages[newMessages.length - 1];
+
           if (lastMessage && lastMessage.type === 'ai') {
             const newText = lastMessage.text + token;
-            const updatedCodeBlocks = parseCodeBlocks(newText, currentSessionId!, lastMessage.id);
-            const codeBlockCount = (newText.match(/```/g) || []).length;
-            if (codeBlockCount % 2 !== 0 && updatedCodeBlocks.length > 0) {
+
+            let updatedCodeBlocks = parseCodeBlocks(newText, currentSessionId!, lastMessage.id);
+
+            // Detect first code block start even if not closed
+            if (/```/.test(newText) && updatedCodeBlocks.length === 0) {
+              const match = /```(\w+)?\n([\s\S]*)/.exec(newText); // opening fence only
+              if (match) {
+                updatedCodeBlocks = [{
+                  id: `msg-${lastMessage.id}-block-0`,
+                  sessionId: currentSessionId!,
+                  messageId: lastMessage.id,
+                  language: match[1] || 'text',
+                  content: match[2] || '',
+                  isComplete: false
+                }];
+
+                // Open canvas immediately if toggle is on and not already opened
+                if (isCanvasMode) {
+                  onOpenCodeCanvas(updatedCodeBlocks[0].id);
+                }
+              }
+            }
+
+            // If an existing block is open but incomplete, keep updating content
+            if (updatedCodeBlocks.length > 0 && (newText.match(/```/g) || []).length % 2 !== 0) {
               updatedCodeBlocks[updatedCodeBlocks.length - 1].isComplete = false;
             }
 
-            newMessages[newMessages.length - 1] = { ...lastMessage, text: newText, codeBlocks: updatedCodeBlocks };
+            newMessages[newMessages.length - 1] = {
+              ...lastMessage,
+              text: newText,
+              codeBlocks: updatedCodeBlocks
+            };
+
             onNewCodeBlocks(lastMessage.id, updatedCodeBlocks, true);
           }
           return newMessages;
         });
-      },
+      }
+      ,
       () => {
         setIsStreaming(false);
         setMessages((prev) => {
           const newMessages = [...prev];
           const lastMessage = newMessages[newMessages.length - 1];
           if (lastMessage && lastMessage.type === 'ai') {
-            lastMessage.codeBlocks.forEach(b => b.isComplete = true);
+            lastMessage.codeBlocks.forEach((b) => (b.isComplete = true));
             onNewCodeBlocks(lastMessage.id, lastMessage.codeBlocks, false);
           }
           return newMessages;
@@ -237,9 +282,11 @@ export default function ChatArea({
               <LoaderCircle className="animate-spin text-primary-accent" size={32} />
             </div>
           ) : (
-            // IMPORTANT: make the key unique even if backend duplicates IDs
             messages.map((msg, idx) => (
-              <div key={`${msg.id ?? 'no-id'}-${idx}`} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start items-start'}`}>
+              <div
+                key={`${msg.id ?? 'no-id'}-${idx}`}
+                className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start items-start'}`}
+              >
                 {msg.type === 'ai' && (
                   <div className="flex-shrink-0 mt-1 mr-3">
                     <Image src="/chatera-logo.svg" alt="Chatera Logo" width={32} height={32} />
@@ -247,11 +294,10 @@ export default function ChatArea({
                 )}
                 <div className={`flex flex-col ${msg.type === 'user' ? 'items-end' : 'items-start'}`}>
                   <div
-                    className={`break-words break-all rounded-message-bubble ${
-                      msg.type === 'user'
+                    className={`break-words break-all rounded-message-bubble ${msg.type === 'user'
                         ? 'max-w-[80%] bg-user-message-bg text-primary-text p-3 rounded-br-none'
                         : 'max-w-full bg-transparent text-primary-text p-0'
-                    }`}
+                      }`}
                   >
                     {msg.type === 'user' ? (
                       <p className="font-mono text-xl leading-relaxed">{msg.text}</p>
@@ -291,8 +337,9 @@ export default function ChatArea({
                         <MarkdownRenderer
                           content={msg.text}
                           codeBlocks={msg.codeBlocks}
-                          isCanvasMode={isCanvasMode}
+                          isCanvasMode={msg.renderedWithCanvas ?? isCanvasMode} // ✅ per-message mode
                           onOpenCodeCanvas={onOpenCodeCanvas}
+                          forceShowOpenCanvasButton={isStreaming && idx === messages.length - 1}
                         />
                       </div>
                     )}
@@ -306,9 +353,8 @@ export default function ChatArea({
       </div>
 
       <footer
-        className={`bg-background z-30 w-full max-w-5xl mx-auto self-center px-4 pb-4 ${
-          !isChatStarted && !selectedSessionId ? 'absolute top-1/2 -translate-y-1/2' : 'sticky bottom-0'
-        }`}
+        className={`bg-background z-30 w-full max-w-5xl mx-auto self-center px-4 pb-4 ${!isChatStarted && !selectedSessionId ? 'absolute top-1/2 -translate-y-1/2' : 'sticky bottom-0'
+          }`}
       >
         {!isChatStarted && !selectedSessionId && (
           <div className="text-center mb-4 flex items-center justify-center">
@@ -334,9 +380,8 @@ export default function ChatArea({
             <button
               type="button"
               onClick={() => setIsCanvasMode(!isCanvasMode)}
-              className={`absolute left-4 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center text-white transition-colors ${
-                isCanvasMode ? 'bg-blue-500' : 'bg-gray-400'
-              }`}
+              className={`absolute left-4 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full flex items-center justify-center text-white transition-colors ${isCanvasMode ? 'bg-blue-500' : 'bg-gray-400'
+                }`}
             >
               <Code size={18} />
             </button>
@@ -349,9 +394,8 @@ export default function ChatArea({
             </button>
           </form>
           <p
-            className={`text-center text-xs text-muted-text mt-2 transition-opacity duration-500 ${
-              isChatStarted || selectedSessionId ? 'opacity-100' : 'opacity-0'
-            }`}
+            className={`text-center text-xs text-muted-text mt-2 transition-opacity duration-500 ${isChatStarted || selectedSessionId ? 'opacity-100' : 'opacity-0'
+              }`}
           >
             AI can make mistakes. Consider checking important information.
           </p>
